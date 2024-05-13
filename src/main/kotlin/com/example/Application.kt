@@ -31,7 +31,7 @@ import kotlin.coroutines.suspendCoroutine
 data class User(val place: Int, val points: Int, val userUid: String)
 
 @Serializable
-data class Event(val latitude: String, val longitude: String, val creatoUid: String)
+data class Event(val latitude: String, val longitude: String, val creatorUid: String)
 
 fun main(args: Array<String>) {
     val serviceAccount = FileInputStream("src/main/resources/durable-path-406515-firebase-adminsdk-z8c0i-808a95da6f.json")
@@ -116,25 +116,48 @@ fun Application.module() {
 
             val latitude = event.latitude.toDouble()
             val longitude = event.longitude.toDouble()
-            val createUid = event.creatoUid
-//            val longitude = event.longitude
-//            val creatorUid = event.creatorUid
-            //Рядом с вами создано новое событие!
+            val creatorUid = event.creatorUid
 
-            //curl -X POST -H "Content-Type: application/json" -d "{\"latitude\":\"55.80095081074492\", \"longitude\":\"37.61738169234994\", \"creatoUid\":\"yourUidHere\"}" http://localhost:8080/events
             val dbRef_user = FirebaseDatabase.getInstance().getReference("users")
-            dbRef_user.addListenerForSingleValueEvent(object: ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot?) {
+            dbRef_user.addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(dataSnapshot: DataSnapshot) {
+                    if (dataSnapshot.exists()) {
+                        dataSnapshot.children.forEach { userSnapshot ->
+                            val locDb = FirebaseDatabase.getInstance().getReference("location/$creatorUid")
 
+                            val userToken = userSnapshot.child("userToken").value.toString()
+
+                            locDb.addListenerForSingleValueEvent(object: ValueEventListener {
+                                override fun onDataChange(locationSnapshot: DataSnapshot?) {
+                                    locationSnapshot?.children?.forEach {
+                                        val userLat = locationSnapshot?.child("latitude")?.value.toString().toDouble()
+                                        val userLong = locationSnapshot.child("longitude").value.toString().toDouble()
+                                        if(distanceBetweenCoordinates(userLat, userLong, latitude, longitude) < 2.0) {
+                                            sendNotificationToUser(
+                                                userToken,
+                                                "Новое событие!",
+                                                "Рядом с вами создано новое событие!"
+                                            )
+                                        }
+                                    }
+                                }
+
+                                override fun onCancelled(error: DatabaseError?) {
+                                    TODO("Not yet implemented")
+                                }
+
+                            })
+                        }
+                        //call.respond(HttpStatusCode.OK, "Notifications sent")
+                    } else {
+                        //call.respond(HttpStatusCode.BadRequest, "No users found")
+                    }
                 }
 
-                override fun onCancelled(error: DatabaseError?) {
-                    TODO("Not yet implemented")
+                override fun onCancelled(error: DatabaseError) {
+                    //call.respond(HttpStatusCode.InternalServerError, "Failed to read users: ${error.toException()}")
                 }
-
             })
-            sendNotificationToUser("dE-hvrX_Sjurt3Bvu3utjl:APA91bHAnOvZ18poz40Lllo_45UguYFGyhNedkxKyJX9I409PQSllK8yOQrE-yXOF828eKYTrdmmvxDerQHzhdI-4_B4_BbRwY2B_6d1R9JWN2W9RteqBtpPm1W4WdAGi1p2E-iKW_I0", "$createUid", "Проснись и пой")
-            call.respond(HttpStatusCode.OK, "Notification sent")
         }
     }
 
@@ -154,6 +177,7 @@ fun distanceBetweenCoordinates(lat1: Double, lon1: Double, lat2: Double, lon2: D
     return earthRadius * c
 }
 fun sendNotificationToUser(deviceToken: String, title: String, message: String) {
+    println(1)
     val message = Message.builder()
         .putData("title", title)
         .putData("message", message)
