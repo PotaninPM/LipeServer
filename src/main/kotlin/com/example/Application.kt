@@ -31,7 +31,35 @@ import kotlin.coroutines.suspendCoroutine
 data class User(val place: Int, val points: Int, val userUid: String)
 
 @Serializable
-data class Event(val latitude: String, val longitude: String, val creatorUid: String)
+data class EntEvent(
+    var event_id: String,
+    var type_of_event: String,
+    var creator_id: String,
+    var time_of_creation: String,
+    var sport_type: String,
+    var title: String,
+    var coordinates: HashMap<String, Double>,
+    var date_of_meeting: String,
+    var max_people: Int,
+    var age: String,
+    var description: String,
+    var photos: ArrayList<String>,
+    var reg_people_id: HashMap<String?, String?>,
+    var amount_reg_people: Int,
+    var status: String,
+    var timestamp: Long
+)
+
+data class GroupModel(
+    val uid: String,
+    val title: String,
+    val imageUid: String,
+    val members: HashMap<String, String>,
+    val messages: java.util.ArrayList<String>
+)
+
+@Serializable
+data class Request(val sender: String, val receiver: String)
 
 fun main(args: Array<String>) {
     val serviceAccount = FileInputStream("src/main/resources/durable-path-406515-firebase-adminsdk-z8c0i-808a95da6f.json")
@@ -41,7 +69,7 @@ fun main(args: Array<String>) {
         .build()
     FirebaseApp.initializeApp(options)
 
-    embeddedServer(Netty, port = 8080, module = Application::module).start(wait = true)
+    embeddedServer(Netty, port = 8080, host = "0.0.0.0", module = Application::module).start(wait = true)
 }
 
 fun Application.module() {
@@ -110,43 +138,83 @@ fun Application.module() {
     }
 
     install(Routing) {
-        post("/events") {
+            get("/") {
+                call.respondText("Hello World!")
+            }
+        post("/create_ent_event") {
             val json = call.receiveText()
-            val event = Json.decodeFromString<Event>(json)
+            val event = Json.decodeFromString<EntEvent>(json)
 
-            val latitude = event.latitude.toDouble()
-            val longitude = event.longitude.toDouble()
-            val creatorUid = event.creatorUid
+            val dbRef_user_your = FirebaseDatabase.getInstance().getReference("users/${event.creator_id}/yourCreatedEvents")
+            val dbRef_user_groups = FirebaseDatabase.getInstance().getReference("users/${event.creator_id}/groups")
+
+            val dbRef_group = FirebaseDatabase.getInstance().getReference("groups")
+
+            val latitude = event.coordinates["latitude"]!!.toDouble()
+            val longitude = event.coordinates["longitude"]!!.toDouble()
+            val creatorUid = event.creator_id
+
+            val dbRef_events = FirebaseDatabase.getInstance().getReference("current_events")
+            val dbRef_user_cr = FirebaseDatabase.getInstance().getReference("users/${event.creator_id}")
+
+            dbRef_events.child(event.event_id).setValue(event) {e, _ ->
+                dbRef_user_cr.child(event.event_id).setValue(event.event_id) {e, _ ->
+                    dbRef_user_your.child(event.event_id).setValue(event.event_id) {e, _ ->
+                        val group = GroupModel(
+                            event.event_id,
+                            event.title,
+                            event.photos.get(0),
+                            hashMapOf(event.creator_id to event.creator_id),
+                            arrayListOf()
+                        )
+                        dbRef_group.child(event.event_id).setValue(group) {e, _ ->
+                            dbRef_user_groups.child(event.event_id).setValue(event.event_id) {e, _ ->
+                                launch {call.respond(HttpStatusCode.OK, "event was created") }
+                            }
+                        }
+                    }
+                }
+            }
 
             val dbRef_user = FirebaseDatabase.getInstance().getReference("users")
             dbRef_user.addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(dataSnapshot: DataSnapshot) {
                     if (dataSnapshot.exists()) {
                         dataSnapshot.children.forEach { userSnapshot ->
-                            val locDb = FirebaseDatabase.getInstance().getReference("location/$creatorUid")
+                            if(userSnapshot.key != creatorUid) {
+                                val locDb = FirebaseDatabase.getInstance().getReference("location/${userSnapshot.key}")
 
-                            val userToken = userSnapshot.child("userToken").value.toString()
+                                val userToken = userSnapshot.child("userToken").value.toString()
 
-                            locDb.addListenerForSingleValueEvent(object: ValueEventListener {
-                                override fun onDataChange(locationSnapshot: DataSnapshot?) {
-                                    locationSnapshot?.children?.forEach {
-                                        val userLat = locationSnapshot?.child("latitude")?.value.toString().toDouble()
-                                        val userLong = locationSnapshot.child("longitude").value.toString().toDouble()
-                                        if(distanceBetweenCoordinates(userLat, userLong, latitude, longitude) < 2.0) {
-                                            sendNotificationToUser(
-                                                userToken,
-                                                "Новое событие!",
-                                                "Рядом с вами создано новое событие!"
-                                            )
+                                locDb.addListenerForSingleValueEvent(object : ValueEventListener {
+                                    override fun onDataChange(locationSnapshot: DataSnapshot?) {
+                                        locationSnapshot?.children?.forEach {
+                                            val userLat =
+                                                locationSnapshot?.child("latitude")?.value.toString().toDouble()
+                                            val userLong =
+                                                locationSnapshot.child("longitude").value.toString().toDouble()
+                                            if (distanceBetweenCoordinates(
+                                                    userLat,
+                                                    userLong,
+                                                    latitude,
+                                                    longitude
+                                                ) < 2.0
+                                            ) {
+                                                sendNotificationToUser(
+                                                    userToken,
+                                                    "Новое событие!",
+                                                    "Рядом с вами создано новое событие!"
+                                                )
+                                            }
                                         }
                                     }
-                                }
 
-                                override fun onCancelled(error: DatabaseError?) {
-                                    TODO("Not yet implemented")
-                                }
+                                    override fun onCancelled(error: DatabaseError?) {
+                                        TODO("Not yet implemented")
+                                    }
 
-                            })
+                                })
+                            }
                         }
                         //call.respond(HttpStatusCode.OK, "Notifications sent")
                     } else {
@@ -159,9 +227,39 @@ fun Application.module() {
                 }
             })
         }
+        post("/query_friend") {
+            val json = call.receiveText()
+            val request = Json.decodeFromString<Request>(json)
+
+            val sender = request.sender
+            val receiver = request.receiver
+
+            call.respondText(sender)
+
+            val dbRef_user = FirebaseDatabase.getInstance().getReference("user")
+
+            dbRef_user.child(receiver).child("userToken").addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot?) {
+                    dbRef_user.child(sender).child("firstName").addListenerForSingleValueEvent(object : ValueEventListener {
+                        override fun onDataChange(userSnapshot: DataSnapshot?) {
+                            val receiverToken = snapshot?.value.toString()
+                            val senderName = userSnapshot?.value.toString()
+                            sendNotificationToUser(receiverToken, "Новая заявка в друзья!", "Вам пришла заявка от $senderName")
+                            //call.respond(HttpStatusCode.OK, "Notification sent")
+                        }
+
+                        override fun onCancelled(error: DatabaseError?) {
+                            //call.respond(HttpStatusCode.InternalServerError, "Failed to read sender's name")
+                        }
+                    })
+                }
+
+                override fun onCancelled(error: DatabaseError?) {
+                    //call.respond(HttpStatusCode.InternalServerError, "Failed to read receiver's token")
+                }
+            })
+        }
     }
-
-
 }
 fun distanceBetweenCoordinates(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
     val earthRadius = 6371 // in km
@@ -177,7 +275,6 @@ fun distanceBetweenCoordinates(lat1: Double, lon1: Double, lat2: Double, lon2: D
     return earthRadius * c
 }
 fun sendNotificationToUser(deviceToken: String, title: String, message: String) {
-    println(1)
     val message = Message.builder()
         .putData("title", title)
         .putData("message", message)
