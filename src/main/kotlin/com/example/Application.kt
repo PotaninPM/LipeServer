@@ -43,7 +43,7 @@ data class EntEvent(
     var max_people: Int,
     var age: String,
     var description: String,
-    var photos: ArrayList<String>,
+    var photos: String,
     var reg_people_id: HashMap<String?, String?>,
     var amount_reg_people: Int,
     var status: String,
@@ -55,7 +55,7 @@ data class GroupModel(
     val title: String,
     val imageUid: String,
     val members: HashMap<String, String>,
-    val messages: java.util.ArrayList<String>
+    val messages: ArrayList<String>
 )
 
 @Serializable
@@ -147,6 +147,7 @@ fun Application.module() {
 
             val dbRef_user_your = FirebaseDatabase.getInstance().getReference("users/${event.creator_id}/yourCreatedEvents")
             val dbRef_user_groups = FirebaseDatabase.getInstance().getReference("users/${event.creator_id}/groups")
+            val dbRef_user_events_amount = FirebaseDatabase.getInstance().getReference("users/${event.creator_id}/events_amount")
 
             val dbRef_group = FirebaseDatabase.getInstance().getReference("groups")
 
@@ -155,7 +156,7 @@ fun Application.module() {
             val creatorUid = event.creator_id
 
             val dbRef_events = FirebaseDatabase.getInstance().getReference("current_events")
-            val dbRef_user_cr = FirebaseDatabase.getInstance().getReference("users/${event.creator_id}")
+            val dbRef_user_cr = FirebaseDatabase.getInstance().getReference("users/${event.creator_id}/curRegEventsId")
 
             dbRef_events.child(event.event_id).setValue(event) {e, _ ->
                 dbRef_user_cr.child(event.event_id).setValue(event.event_id) {e, _ ->
@@ -163,7 +164,7 @@ fun Application.module() {
                         val group = GroupModel(
                             event.event_id,
                             event.title,
-                            event.photos.get(0),
+                            event.photos,
                             hashMapOf(event.creator_id to event.creator_id),
                             arrayListOf()
                         )
@@ -172,6 +173,18 @@ fun Application.module() {
                                 launch {call.respond(HttpStatusCode.OK, "event was created") }
                             }
                         }
+                        dbRef_user_events_amount.addListenerForSingleValueEvent(object : ValueEventListener {
+                            override fun onDataChange(snapshot: DataSnapshot?) {
+                                dbRef_user_events_amount.setValue(snapshot?.value.toString().toInt() + 1) {e, _ ->
+
+                                }
+                            }
+
+                            override fun onCancelled(error: DatabaseError?) {
+                                TODO("Not yet implemented")
+                            }
+
+                        })
                     }
                 }
             }
