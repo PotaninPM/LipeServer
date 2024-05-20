@@ -10,6 +10,7 @@ import com.google.firebase.database.FirebaseDatabase
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.Message
+import com.google.gson.annotations.SerializedName
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
@@ -50,6 +51,33 @@ data class EntEvent(
     var timestamp: Long
 )
 
+@Serializable
+data class EcoEvent(
+    var event_id: String,
+    var type_of_event: String,
+    var creator_id: String,
+    var time_of_creation: String,
+    var title: String,
+    var coordinates: HashMap<String, Double>,
+    var power_of_pollution: String,
+    var date_of_meeting: String,
+    var min_people: Int,
+    var max_people: Int,
+    var description: String,
+    var photos: String,
+    var reg_people_id: HashMap<String?, String?>,
+    var amount_reg_people: Int,
+    var get_points: Int,
+    var status: String,
+    var timestamp: Long
+)
+
+@Serializable
+data class Points(
+    var people: List<String>,
+    var points: Int
+)
+
 data class GroupModel(
     val uid: String,
     val title: String,
@@ -59,7 +87,7 @@ data class GroupModel(
 )
 
 @Serializable
-data class Request(val sender: String, val receiver: String)
+data class Request(val receiver: String, val sender: String)
 
 fun main(args: Array<String>) {
     val serviceAccount = FileInputStream("src/main/resources/durable-path-406515-firebase-adminsdk-z8c0i-808a95da6f.json")
@@ -211,7 +239,7 @@ fun Application.module() {
                                                     userLong,
                                                     latitude,
                                                     longitude
-                                                ) < 2.0
+                                                ) < 10.0
                                             ) {
                                                 sendNotificationToUser(
                                                     userToken,
@@ -240,7 +268,106 @@ fun Application.module() {
                 }
             })
         }
-        post("/query_friend") {
+        post("/create_eco_event") {
+            val json = call.receiveText()
+            val event = Json.decodeFromString<EcoEvent>(json)
+
+            val dbRef_user_your = FirebaseDatabase.getInstance().getReference("users/${event.creator_id}/yourCreatedEvents")
+            val dbRef_user_groups = FirebaseDatabase.getInstance().getReference("users/${event.creator_id}/groups")
+            val dbRef_user_events_amount = FirebaseDatabase.getInstance().getReference("users/${event.creator_id}/events_amount")
+
+            val dbRef_group = FirebaseDatabase.getInstance().getReference("groups")
+
+            val latitude = event.coordinates["latitude"]!!.toDouble()
+            val longitude = event.coordinates["longitude"]!!.toDouble()
+            val creatorUid = event.creator_id
+
+            val dbRef_events = FirebaseDatabase.getInstance().getReference("current_events")
+            val dbRef_user_cr = FirebaseDatabase.getInstance().getReference("users/${event.creator_id}/curRegEventsId")
+
+            dbRef_events.child(event.event_id).setValue(event) {e, _ ->
+                dbRef_user_cr.child(event.event_id).setValue(event.event_id) {e, _ ->
+                    dbRef_user_your.child(event.event_id).setValue(event.event_id) {e, _ ->
+                        val group = GroupModel(
+                            event.event_id,
+                            event.title,
+                            event.photos,
+                            hashMapOf(event.creator_id to event.creator_id),
+                            arrayListOf()
+                        )
+                        dbRef_group.child(event.event_id).setValue(group) {e, _ ->
+                            dbRef_user_groups.child(event.event_id).setValue(event.event_id) {e, _ ->
+                                launch {call.respond(HttpStatusCode.OK, "event was created") }
+                            }
+                        }
+                        dbRef_user_events_amount.addListenerForSingleValueEvent(object : ValueEventListener {
+                            override fun onDataChange(snapshot: DataSnapshot?) {
+                                dbRef_user_events_amount.setValue(snapshot?.value.toString().toInt() + 1) {e, _ ->
+
+                                }
+                            }
+
+                            override fun onCancelled(error: DatabaseError?) {
+                                TODO("Not yet implemented")
+                            }
+
+                        })
+                    }
+                }
+            }
+
+            val dbRef_user = FirebaseDatabase.getInstance().getReference("users")
+            dbRef_user.addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(dataSnapshot: DataSnapshot) {
+                    if (dataSnapshot.exists()) {
+                        dataSnapshot.children.forEach { userSnapshot ->
+                            if(userSnapshot.key != creatorUid) {
+                                val locDb = FirebaseDatabase.getInstance().getReference("location/${userSnapshot.key}")
+
+                                val userToken = userSnapshot.child("userToken").value.toString()
+
+                                locDb.addListenerForSingleValueEvent(object : ValueEventListener {
+                                    override fun onDataChange(locationSnapshot: DataSnapshot?) {
+                                        locationSnapshot?.children?.forEach {
+                                            val userLat =
+                                                locationSnapshot?.child("latitude")?.value.toString().toDouble()
+                                            val userLong =
+                                                locationSnapshot.child("longitude").value.toString().toDouble()
+                                            if (distanceBetweenCoordinates(
+                                                    userLat,
+                                                    userLong,
+                                                    latitude,
+                                                    longitude
+                                                ) < 10.0
+                                            ) {
+                                                sendNotificationToUser(
+                                                    userToken,
+                                                    "Новое событие!",
+                                                    "Рядом с вами создано новое событие!"
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    override fun onCancelled(error: DatabaseError?) {
+                                        TODO("Not yet implemented")
+                                    }
+
+                                })
+                            }
+                        }
+                        //call.respond(HttpStatusCode.OK, "Notifications sent")
+                    } else {
+                        //call.respond(HttpStatusCode.BadRequest, "No users found")
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    //call.respond(HttpStatusCode.InternalServerError, "Failed to read users: ${error.toException()}")
+                }
+            })
+        }
+        post("/query_to_friend") {
             val json = call.receiveText()
             val request = Json.decodeFromString<Request>(json)
 
@@ -258,7 +385,7 @@ fun Application.module() {
                             val receiverToken = snapshot?.value.toString()
                             val senderName = userSnapshot?.value.toString()
                             sendNotificationToUser(receiverToken, "Новая заявка в друзья!", "Вам пришла заявка от $senderName")
-                            //call.respond(HttpStatusCode.OK, "Notification sent")
+                            //call.respondText(HttpStatusCode.OK, "Notification sent")
                         }
 
                         override fun onCancelled(error: DatabaseError?) {
@@ -269,6 +396,80 @@ fun Application.module() {
 
                 override fun onCancelled(error: DatabaseError?) {
                     //call.respond(HttpStatusCode.InternalServerError, "Failed to read receiver's token")
+                }
+            })
+        }
+        post("/accept_query_to_friend") {
+            val json = call.receiveText()
+            val request = Json.decodeFromString<Request>(json)
+
+            val sender = request.sender
+            val receiver = request.receiver
+
+            call.respondText(sender)
+
+            val dbRef_user = FirebaseDatabase.getInstance().getReference("user")
+
+            dbRef_user.child(receiver).child("userToken").addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot?) {
+                    dbRef_user.child(sender).child("firstName").addListenerForSingleValueEvent(object : ValueEventListener {
+                        override fun onDataChange(userSnapshot: DataSnapshot?) {
+                            val receiverToken = snapshot?.value.toString()
+                            val senderName = userSnapshot?.value.toString()
+                            sendNotificationToUser(receiverToken, "Новая заявка в друзья!", "Вам пришла заявка от $senderName")
+                            //call.respondText(HttpStatusCode.OK, "Notification sent")
+                        }
+
+                        override fun onCancelled(error: DatabaseError?) {
+                            //call.respond(HttpStatusCode.InternalServerError, "Failed to read sender's name")
+                        }
+                    })
+                }
+
+                override fun onCancelled(error: DatabaseError?) {
+                    //call.respond(HttpStatusCode.InternalServerError, "Failed to read receiver's token")
+                }
+            })
+        }
+        post("/get_points") {
+            val json = call.receiveText()
+            val points = Json.decodeFromString<Points>(json)
+
+            val selectedUsers = points.people
+            val pointsInt = points.points
+            val database = FirebaseDatabase.getInstance()
+            val dbRefUsers = database.getReference("users")
+            val dbRefRating = database.getReference("rating")
+
+            selectedUsers.forEach { userUid ->
+                val userPointsRef = dbRefUsers.child(userUid).child("points")
+                userPointsRef.addListenerForSingleValueEvent(object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        val currentPoints = snapshot.getValue(Int::class.java) ?: 0
+                        val newPoints = currentPoints + pointsInt
+                        userPointsRef.setValue(newPoints) {e, _ ->
+
+                        }
+                    }
+
+                    override fun onCancelled(error: DatabaseError) {
+                        print("Failed points $userUid: ${error.message}")
+                    }
+                })
+            }
+            dbRefRating.addListenerForSingleValueEvent(object: ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val uid = snapshot.child("userUid").value.toString()
+                    if(selectedUsers.contains(uid)) {
+                        val curPoints = snapshot.child("points").value.toString().toInt()
+                        dbRefRating.child(uid).child("points").setValue(curPoints + pointsInt) {e, _ ->
+
+                        }
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    TODO("Not yet implemented")
                 }
             })
         }
