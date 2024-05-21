@@ -87,7 +87,7 @@ data class GroupModel(
 )
 
 @Serializable
-data class Request(val receiver: String, val sender: String)
+data class Request(val receiverUid: String, val senderUid: String)
 
 fun main(args: Array<String>) {
     val serviceAccount = FileInputStream("src/main/resources/durable-path-406515-firebase-adminsdk-z8c0i-808a95da6f.json")
@@ -222,7 +222,7 @@ fun Application.module() {
                 override fun onDataChange(dataSnapshot: DataSnapshot) {
                     if (dataSnapshot.exists()) {
                         dataSnapshot.children.forEach { userSnapshot ->
-                            if(userSnapshot.key != creatorUid) {
+                            //if(userSnapshot.key != creatorUid) {
                                 val locDb = FirebaseDatabase.getInstance().getReference("location/${userSnapshot.key}")
 
                                 val userToken = userSnapshot.child("userToken").value.toString()
@@ -255,7 +255,7 @@ fun Application.module() {
                                     }
 
                                 })
-                            }
+                            //}
                         }
                         //call.respond(HttpStatusCode.OK, "Notifications sent")
                     } else {
@@ -371,18 +371,18 @@ fun Application.module() {
             val json = call.receiveText()
             val request = Json.decodeFromString<Request>(json)
 
-            val sender = request.sender
-            val receiver = request.receiver
+            val sender = request.senderUid
+            val receiver = request.receiverUid
 
             call.respondText(sender)
 
-            val dbRef_user = FirebaseDatabase.getInstance().getReference("user")
+            val dbRef_user = FirebaseDatabase.getInstance().getReference("users")
 
-            dbRef_user.child(receiver).child("userToken").addListenerForSingleValueEvent(object : ValueEventListener {
+            dbRef_user.child(receiver).addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot?) {
-                    dbRef_user.child(sender).child("firstName").addListenerForSingleValueEvent(object : ValueEventListener {
+                    dbRef_user.child(sender).child("firstAndLastName").addListenerForSingleValueEvent(object : ValueEventListener {
                         override fun onDataChange(userSnapshot: DataSnapshot?) {
-                            val receiverToken = snapshot?.value.toString()
+                            val receiverToken = snapshot?.child("userToken")?.value.toString()
                             val senderName = userSnapshot?.value.toString()
                             sendNotificationToUser(receiverToken, "Новая заявка в друзья!", "Вам пришла заявка от $senderName")
                             //call.respondText(HttpStatusCode.OK, "Notification sent")
@@ -403,20 +403,20 @@ fun Application.module() {
             val json = call.receiveText()
             val request = Json.decodeFromString<Request>(json)
 
-            val sender = request.sender
-            val receiver = request.receiver
+            val sender = request.senderUid
+            val receiver = request.receiverUid
 
             call.respondText(sender)
 
-            val dbRef_user = FirebaseDatabase.getInstance().getReference("user")
+            val dbRef_user = FirebaseDatabase.getInstance().getReference("users")
 
-            dbRef_user.child(receiver).child("userToken").addListenerForSingleValueEvent(object : ValueEventListener {
+            dbRef_user.child(sender).child("userToken").addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot?) {
-                    dbRef_user.child(sender).child("firstName").addListenerForSingleValueEvent(object : ValueEventListener {
+                    dbRef_user.child(receiver).child("firstAndLastName").addListenerForSingleValueEvent(object : ValueEventListener {
                         override fun onDataChange(userSnapshot: DataSnapshot?) {
-                            val receiverToken = snapshot?.value.toString()
-                            val senderName = userSnapshot?.value.toString()
-                            sendNotificationToUser(receiverToken, "Новая заявка в друзья!", "Вам пришла заявка от $senderName")
+                            val senderToken = snapshot?.value.toString()
+                            val receiverName = userSnapshot?.value.toString()
+                            sendNotificationToUser(senderToken, "Заявка в друзья принята!", "$receiverName принял вашу заявку в друзья")
                             //call.respondText(HttpStatusCode.OK, "Notification sent")
                         }
 
@@ -442,13 +442,13 @@ fun Application.module() {
             val dbRefRating = database.getReference("rating")
 
             selectedUsers.forEach { userUid ->
-                val userPointsRef = dbRefUsers.child(userUid).child("points")
+                val userPointsRef = dbRefUsers.child(userUid)
                 userPointsRef.addListenerForSingleValueEvent(object : ValueEventListener {
                     override fun onDataChange(snapshot: DataSnapshot) {
-                        val currentPoints = snapshot.getValue(Int::class.java) ?: 0
+                        val currentPoints = snapshot.child("points").getValue(Int::class.java) ?: 0
                         val newPoints = currentPoints + pointsInt
                         userPointsRef.setValue(newPoints) {e, _ ->
-
+                            sendNotificationToUser(snapshot.child("userToken").value.toString(), "Вам начислены баллы", "Вам начислено $pointsInt баллов. Общие баллы: $newPoints")
                         }
                     }
 
@@ -459,11 +459,13 @@ fun Application.module() {
             }
             dbRefRating.addListenerForSingleValueEvent(object: ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
-                    val uid = snapshot.child("userUid").value.toString()
-                    if(selectedUsers.contains(uid)) {
-                        val curPoints = snapshot.child("points").value.toString().toInt()
-                        dbRefRating.child(uid).child("points").setValue(curPoints + pointsInt) {e, _ ->
+                    snapshot.children.forEach { it ->
+                        val uid = it.child("userUid").value.toString()
+                        if(selectedUsers.contains(uid)) {
+                            val curPoints = it.child("points").value.toString().toInt()
+                            dbRefRating.child(it.key).child("points").setValue(curPoints + pointsInt) { e, _ ->
 
+                            }
                         }
                     }
                 }
