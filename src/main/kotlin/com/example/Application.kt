@@ -321,7 +321,7 @@ fun Application.module() {
                 override fun onDataChange(dataSnapshot: DataSnapshot) {
                     if (dataSnapshot.exists()) {
                         dataSnapshot.children.forEach { userSnapshot ->
-                            if(userSnapshot.key != creatorUid) {
+                            //if(userSnapshot.key != creatorUid) {
                                 val locDb = FirebaseDatabase.getInstance().getReference("location/${userSnapshot.key}")
 
                                 val userToken = userSnapshot.child("userToken").value.toString()
@@ -355,7 +355,7 @@ fun Application.module() {
 
                                 })
                             }
-                        }
+                        //}
                         //call.respond(HttpStatusCode.OK, "Notifications sent")
                     } else {
                         //call.respond(HttpStatusCode.BadRequest, "No users found")
@@ -447,7 +447,7 @@ fun Application.module() {
                     override fun onDataChange(snapshot: DataSnapshot) {
                         val currentPoints = snapshot.child("points").getValue(Int::class.java) ?: 0
                         val newPoints = currentPoints + pointsInt
-                        userPointsRef.setValue(newPoints) {e, _ ->
+                        userPointsRef.child("points").setValue(newPoints) {e, _ ->
                             sendNotificationToUser(snapshot.child("userToken").value.toString(), "Вам начислены баллы", "Вам начислено $pointsInt баллов. Общие баллы: $newPoints")
                         }
                     }
