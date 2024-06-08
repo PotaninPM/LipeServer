@@ -244,7 +244,8 @@ fun Application.module() {
                                                 sendNotificationToUser(
                                                     userToken,
                                                     "Новое событие!",
-                                                    "Рядом с вами создано новое событие!"
+                                                    "Рядом с вами создано новое событие!",
+                                                    "new_event"
                                                 )
                                             }
                                         }
@@ -343,7 +344,8 @@ fun Application.module() {
                                                 sendNotificationToUser(
                                                     userToken,
                                                     "Новое событие!",
-                                                    "Рядом с вами создано новое событие!"
+                                                    "Рядом с вами создано новое событие!",
+                                                    "new_event"
                                                 )
                                             }
                                         }
@@ -384,7 +386,7 @@ fun Application.module() {
                         override fun onDataChange(userSnapshot: DataSnapshot?) {
                             val receiverToken = snapshot?.child("userToken")?.value.toString()
                             val senderName = userSnapshot?.value.toString()
-                            sendNotificationToUser(receiverToken, "Новая заявка в друзья!", "Вам пришла заявка от $senderName")
+                            sendNotificationToUser(receiverToken, "Новая заявка в друзья!", "Вам пришла заявка от $senderName", "friendship_request")
                             //call.respondText(HttpStatusCode.OK, "Notification sent")
                         }
 
@@ -416,7 +418,7 @@ fun Application.module() {
                         override fun onDataChange(userSnapshot: DataSnapshot?) {
                             val senderToken = snapshot?.value.toString()
                             val receiverName = userSnapshot?.value.toString()
-                            sendNotificationToUser(senderToken, "Заявка в друзья принята!", "$receiverName принял вашу заявку в друзья")
+                            sendNotificationToUser(senderToken, "Заявка в друзья принята!", "$receiverName принял вашу заявку в друзья", "accept_friendship")
                             //call.respondText(HttpStatusCode.OK, "Notification sent")
                         }
 
@@ -448,7 +450,7 @@ fun Application.module() {
                         val currentPoints = snapshot.child("points").getValue(Int::class.java) ?: 0
                         val newPoints = currentPoints + pointsInt
                         userPointsRef.child("points").setValue(newPoints) {e, _ ->
-                            sendNotificationToUser(snapshot.child("userToken").value.toString(), "Вам начислены баллы", "Вам начислено $pointsInt баллов. Общие баллы: $newPoints")
+                            sendNotificationToUser(snapshot.child("userToken").value.toString(), "Вам начислены баллы", "Вам начислено $pointsInt баллов. Общие баллы: $newPoints", "points")
                         }
                     }
 
@@ -490,10 +492,11 @@ fun distanceBetweenCoordinates(lat1: Double, lon1: Double, lat2: Double, lon2: D
     val c = 2 * atan2(sqrt(a), sqrt(1 - a))
     return earthRadius * c
 }
-fun sendNotificationToUser(deviceToken: String, title: String, message: String) {
+fun sendNotificationToUser(deviceToken: String, title: String, message: String, type: String) {
     val message = Message.builder()
         .putData("title", title)
         .putData("message", message)
+        .putData("type", type)
         .setToken(deviceToken)
         .build()
 
