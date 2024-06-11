@@ -22,6 +22,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import java.io.File
 import java.io.FileInputStream
 import java.lang.Math.*
 import java.time.Instant
@@ -90,15 +91,17 @@ data class GroupModel(
 data class Request(val receiverUid: String, val senderUid: String)
 
 fun main(args: Array<String>) {
-    val serviceAccount = FileInputStream("src/main/resources/durable-path-406515-firebase-adminsdk-z8c0i-808a95da6f.json")
+    val serviceAccount = FileInputStream("src/main/resources/durable-path-406515-firebase-adminsdk-z8c0i-3242b9bf65.json")
     val options = FirebaseOptions.Builder()
         .setCredentials(GoogleCredentials.fromStream(serviceAccount))
         .setDatabaseUrl("https://durable-path-406515-default-rtdb.firebaseio.com")
         .build()
+
     FirebaseApp.initializeApp(options)
 
     embeddedServer(Netty, port = 8080, host = "0.0.0.0", module = Application::module).start(wait = true)
 }
+
 
 fun Application.module() {
     launch {
@@ -281,7 +284,6 @@ fun Application.module() {
 
             val latitude = event.coordinates["latitude"]!!.toDouble()
             val longitude = event.coordinates["longitude"]!!.toDouble()
-            val creatorUid = event.creator_id
 
             val dbRef_events = FirebaseDatabase.getInstance().getReference("current_events")
             val dbRef_user_cr = FirebaseDatabase.getInstance().getReference("users/${event.creator_id}/curRegEventsId")

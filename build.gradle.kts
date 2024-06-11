@@ -24,7 +24,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.google.firebase:firebase-admin:7.0.0")
+    implementation("com.google.firebase:firebase-admin:9.3.0")
 
     implementation("io.ktor:ktor-server-content-negotiation-jvm")
     implementation("io.ktor:ktor-server-core-jvm")
