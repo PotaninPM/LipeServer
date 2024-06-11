@@ -94,6 +94,12 @@ data class GroupModel(
 data class Request(val receiverUid: String, val senderUid: String)
 
 fun main(args: Array<String>) {
+    initializeFirebase()
+
+    embeddedServer(Netty, port = 8080, host = "0.0.0.0", module = Application::module).start(wait = true)
+}
+
+fun initializeFirebase() {
     val logger = LoggerFactory.getLogger("Main")
 
     try {
@@ -104,12 +110,11 @@ fun main(args: Array<String>) {
             .build()
 
         FirebaseApp.initializeApp(options)
-        logger.info("FirebaseApp initialized successfully")
+        println("FirebaseApp initialized successfully")
     } catch (e: Exception) {
-        logger.error("Error initializing FirebaseApp: ${e.message}")
+        println("222")
+        println("Error initializing FirebaseApp: ${e.message}")
     }
-
-    embeddedServer(Netty, port = 8080, host = "0.0.0.0", module = Application::module).start(wait = true)
 }
 
 
