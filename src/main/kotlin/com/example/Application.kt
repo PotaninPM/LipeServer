@@ -508,6 +508,7 @@ suspend fun deleteOldEvents() {
 
     val dbEvent = FirebaseDatabase.getInstance().getReference("current_events")
     val dbGroups = FirebaseDatabase.getInstance().getReference("groups")
+    val reports = FirebaseDatabase.getInstance().getReference("reports")
 
     val currentTime = Instant.now().epochSecond
 
@@ -522,6 +523,10 @@ suspend fun deleteOldEvents() {
                                 continuation.resume(Unit)
                             }
                         }
+                        reports.child(eventSnapshot.key).ref.removeValue() { err, _ ->
+                            continuation.resume(Unit)
+                        }
+
                     }
                 }
             }
