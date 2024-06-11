@@ -12,9 +12,11 @@ import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.Message
 import com.google.gson.annotations.SerializedName
 import io.ktor.http.*
+import io.ktor.serialization.gson.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
+import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -22,6 +24,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import org.slf4j.LoggerFactory
 import java.io.File
 import java.io.FileInputStream
 import java.lang.Math.*
@@ -91,19 +94,32 @@ data class GroupModel(
 data class Request(val receiverUid: String, val senderUid: String)
 
 fun main(args: Array<String>) {
-    val serviceAccount = FileInputStream("src/main/resources/durable-path-406515-firebase-adminsdk-z8c0i-3242b9bf65.json")
-    val options = FirebaseOptions.Builder()
-        .setCredentials(GoogleCredentials.fromStream(serviceAccount))
-        .setDatabaseUrl("https://durable-path-406515-default-rtdb.firebaseio.com")
-        .build()
+    val logger = LoggerFactory.getLogger("Main")
 
-    FirebaseApp.initializeApp(options)
+    try {
+        val serviceAccount = FileInputStream("src/main/resources/durable-path-406515-firebase-adminsdk-z8c0i-3242b9bf65.json")
+        val options = FirebaseOptions.Builder()
+            .setCredentials(GoogleCredentials.fromStream(serviceAccount))
+            .setDatabaseUrl("https://durable-path-406515-default-rtdb.firebaseio.com")
+            .build()
+
+        FirebaseApp.initializeApp(options)
+        logger.info("FirebaseApp initialized successfully")
+    } catch (e: Exception) {
+        logger.error("Error initializing FirebaseApp: ${e.message}")
+    }
 
     embeddedServer(Netty, port = 8080, host = "0.0.0.0", module = Application::module).start(wait = true)
 }
 
 
 fun Application.module() {
+    install(ContentNegotiation) {
+        gson {
+            setPrettyPrinting()
+        }
+    }
+
     launch {
         val db = FirebaseDatabase.getInstance().getReference("rating")
         db.addValueEventListener(object: ValueEventListener {
