@@ -25,14 +25,14 @@ repositories {
 
 dependencies {
     implementation("com.google.firebase:firebase-admin:9.3.0")
-
-    implementation("io.ktor:ktor-server-content-negotiation-jvm")
-    implementation("io.ktor:ktor-server-core-jvm")
-    implementation("io.ktor:ktor-serialization-gson-jvm")
-    implementation("io.ktor:ktor-serialization-kotlinx-json-jvm")
-    implementation("io.ktor:ktor-server-netty-jvm")
+    implementation("io.ktor:ktor-server-content-negotiation-jvm:$ktor_version")
+    implementation("io.ktor:ktor-server-core-jvm:$ktor_version")
+    implementation("io.ktor:ktor-serialization-gson-jvm:$ktor_version")
+    implementation("io.ktor:ktor-serialization-kotlinx-json-jvm:$ktor_version")
+    implementation("io.ktor:ktor-server-netty-jvm:$ktor_version")
     implementation("ch.qos.logback:logback-classic:$logback_version")
-    implementation("io.ktor:ktor-server-config-yaml:2.3.10")
-    testImplementation("io.ktor:ktor-server-tests-jvm")
+    implementation("io.ktor:ktor-server-config-yaml:$ktor_version")
+    testImplementation("io.ktor:ktor-server-tests-jvm:$ktor_version")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlin_version")
 }
+

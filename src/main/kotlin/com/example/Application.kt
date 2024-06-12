@@ -94,27 +94,25 @@ data class GroupModel(
 data class Request(val receiverUid: String, val senderUid: String)
 
 fun main(args: Array<String>) {
-    initializeFirebase()
-
-    embeddedServer(Netty, port = 8080, host = "0.0.0.0", module = Application::module).start(wait = true)
-}
-
-fun initializeFirebase() {
-    val logger = LoggerFactory.getLogger("Main")
-
     try {
         val serviceAccount = FileInputStream("src/main/resources/durable-path-406515-firebase-adminsdk-z8c0i-3242b9bf65.json")
+
         val options = FirebaseOptions.Builder()
             .setCredentials(GoogleCredentials.fromStream(serviceAccount))
             .setDatabaseUrl("https://durable-path-406515-default-rtdb.firebaseio.com")
             .build()
 
-        FirebaseApp.initializeApp(options)
-        println("FirebaseApp initialized successfully")
+        if(FirebaseApp.getApps().isEmpty()) {
+            FirebaseApp.initializeApp(options)
+            println("FirebaseApp initialized successfully")
+        }
+
     } catch (e: Exception) {
         println("222")
         println("Error initializing FirebaseApp: ${e.message}")
     }
+
+    embeddedServer(Netty, port = 8080, host = "0.0.0.0", module = Application::module).start(wait = true)
 }
 
 
@@ -125,74 +123,42 @@ fun Application.module() {
         }
     }
 
-    launch {
-        val db = FirebaseDatabase.getInstance().getReference("rating")
-        db.addValueEventListener(object: ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot?) {
-                db.addListenerForSingleValueEvent(object : ValueEventListener {
-                    override fun onDataChange(dataSnapshot: DataSnapshot) {
-                        if (dataSnapshot.exists()) {
-                            val usersList = mutableListOf<User>()
-                            dataSnapshot.children.forEach { userSnapshot ->
-                                val user = User(userSnapshot.child("place").value.toString().toInt(), userSnapshot.child("points").value.toString().toInt(), userSnapshot.child("userUid").value.toString())
-                                usersList.add(user)
-                            }
-
-                            val sortedUsers = usersList.sortedByDescending { it.points }
-                            sortedUsers.forEachIndexed { index, user ->
-                                val userUid = dataSnapshot.children.elementAtOrNull(index)?.key
-                                if (userUid != null) {
-                                    db.child(userUid).child("place").setValue(index + 1) { databaseError, _ ->
-                                        if (databaseError != null) {
-                                            //println("${databaseError.message}")
-                                        } else {
-                                            //println("Data saved successfully")
-                                        }
-                                    }
-                                    db.child(userUid).child("points").setValue(user.points) { databaseError, _ ->
-                                        if (databaseError != null) {
-                                            //println("${databaseError.message}")
-                                        } else {
-                                            //println("Data saved successfully")
-                                        }
-                                    }
-                                    db.child(userUid).child("userUid").setValue(user.userUid) { databaseError, _ ->
-                                        if (databaseError != null) {
-                                            //println("${databaseError.message}")
-                                        } else {
-                                            //println("Data saved successfully")
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            println("No data found")
-                        }
-                    }
-
-                    override fun onCancelled(error: DatabaseError) {
-                        println("Failed to read value: ${error.toException()}")
-                    }
-                })
-            }
-
-            override fun onCancelled(error: DatabaseError?) {
-                TODO("Not yet implemented")
-            }
-
-        })
-    }
-    launch {
-        while(true) {
-            deleteOldEvents()
-            delay(1000 * 3600 * 60 * 24)
-        }
-    }
-
     install(Routing) {
-            get("/") {
-                call.respondText("Hello World!")
-            }
+        get("/") {
+            call.respondText("Hello World!")
+        }
+        post("/query_to_friend") {
+            val json = call.receiveText()
+            val request = Json.decodeFromString<Request>(json)
+
+            val sender = request.senderUid
+            val receiver = request.receiverUid
+
+            call.respondText(sender)
+
+            val dbRef_user = FirebaseDatabase.getInstance().getReference("users")
+
+            dbRef_user.child(receiver).addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot?) {
+                    dbRef_user.child(sender).child("firstAndLastName").addListenerForSingleValueEvent(object : ValueEventListener {
+                        override fun onDataChange(userSnapshot: DataSnapshot?) {
+                            val receiverToken = snapshot?.child("userToken")?.value.toString()
+                            val senderName = userSnapshot?.value.toString()
+                            sendNotificationToUser(receiverToken, "Новая заявка в друзья!", "Вам пришла заявка от $senderName", "friendship_request")
+                            //call.respondText(HttpStatusCode.OK, "Notification sent")
+                        }
+
+                        override fun onCancelled(error: DatabaseError?) {
+                            //call.respond(HttpStatusCode.InternalServerError, "Failed to read sender's name")
+                        }
+                    })
+                }
+
+                override fun onCancelled(error: DatabaseError?) {
+                    //call.respond(HttpStatusCode.InternalServerError, "Failed to read receiver's token")
+                }
+            })
+        }
         post("/create_ent_event") {
             val json = call.receiveText()
             val event = Json.decodeFromString<EntEvent>(json)
@@ -205,7 +171,6 @@ fun Application.module() {
 
             val latitude = event.coordinates["latitude"]!!.toDouble()
             val longitude = event.coordinates["longitude"]!!.toDouble()
-            val creatorUid = event.creator_id
 
             val dbRef_events = FirebaseDatabase.getInstance().getReference("current_events")
             val dbRef_user_cr = FirebaseDatabase.getInstance().getReference("users/${event.creator_id}/curRegEventsId")
@@ -392,38 +357,6 @@ fun Application.module() {
                 }
             })
         }
-        post("/query_to_friend") {
-            val json = call.receiveText()
-            val request = Json.decodeFromString<Request>(json)
-
-            val sender = request.senderUid
-            val receiver = request.receiverUid
-
-            call.respondText(sender)
-
-            val dbRef_user = FirebaseDatabase.getInstance().getReference("users")
-
-            dbRef_user.child(receiver).addListenerForSingleValueEvent(object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot?) {
-                    dbRef_user.child(sender).child("firstAndLastName").addListenerForSingleValueEvent(object : ValueEventListener {
-                        override fun onDataChange(userSnapshot: DataSnapshot?) {
-                            val receiverToken = snapshot?.child("userToken")?.value.toString()
-                            val senderName = userSnapshot?.value.toString()
-                            sendNotificationToUser(receiverToken, "Новая заявка в друзья!", "Вам пришла заявка от $senderName", "friendship_request")
-                            //call.respondText(HttpStatusCode.OK, "Notification sent")
-                        }
-
-                        override fun onCancelled(error: DatabaseError?) {
-                            //call.respond(HttpStatusCode.InternalServerError, "Failed to read sender's name")
-                        }
-                    })
-                }
-
-                override fun onCancelled(error: DatabaseError?) {
-                    //call.respond(HttpStatusCode.InternalServerError, "Failed to read receiver's token")
-                }
-            })
-        }
         post("/accept_query_to_friend") {
             val json = call.receiveText()
             val request = Json.decodeFromString<Request>(json)
@@ -525,38 +458,4 @@ fun sendNotificationToUser(deviceToken: String, title: String, message: String, 
 
     val response = FirebaseMessaging.getInstance().sendAsync(message).get()
     println("Sent message: $response")
-}
-
-suspend fun deleteOldEvents() {
-
-    val dbEvent = FirebaseDatabase.getInstance().getReference("current_events")
-    val dbGroups = FirebaseDatabase.getInstance().getReference("groups")
-    val reports = FirebaseDatabase.getInstance().getReference("reports")
-
-    val currentTime = Instant.now().epochSecond
-
-    suspendCoroutine<Unit> { continuation ->
-        dbEvent.addListenerForSingleValueEvent(object : ValueEventListener {
-            override fun onDataChange(dataSnapshot: DataSnapshot) {
-                dataSnapshot.children.forEach { eventSnapshot ->
-                    val timestamp = eventSnapshot.child("timestamp").value as Long
-                    if (currentTime - timestamp > 5 * 24 * 60 * 60) {
-                        eventSnapshot.ref.removeValue() { error, _ ->
-                            dbGroups.child(eventSnapshot.key).ref.removeValue() { err, _ ->
-                                continuation.resume(Unit)
-                            }
-                        }
-                        reports.child(eventSnapshot.key).ref.removeValue() { err, _ ->
-                            continuation.resume(Unit)
-                        }
-
-                    }
-                }
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                continuation.resumeWithException(error.toException())
-            }
-        })
-    }
 }
