@@ -46,11 +46,11 @@ fun main() {
 
 fun initializeFirebaseApp() {
     try {
-        val serviceAccount = FileInputStream("src/main/resources/durable-path-406515-firebase-adminsdk-z8c0i-3242b9bf65.json")
+        val serviceAccount = FileInputStream("")
 
         val options = FirebaseOptions.Builder()
             .setCredentials(GoogleCredentials.fromStream(serviceAccount))
-            .setDatabaseUrl("https://durable-path-406515-default-rtdb.firebaseio.com")
+            .setDatabaseUrl("")
             .build()
 
         if (FirebaseApp.getApps().isEmpty()) {
